@@ -1,0 +1,411 @@
+# Reusable CI workflow for Vite + React SPA projects
+# Supports npm, pnpm, and yarn with configurable jobs
+
+name: CI Vite + React
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version'
+        type: string
+        default: '20'
+      package-manager:
+        description: 'Package manager (npm, pnpm, yarn)'
+        type: string
+        default: 'npm'
+      pnpm-version:
+        description: 'pnpm version (if using pnpm)'
+        type: string
+        default: '9'
+      working-directory:
+        description: 'Working directory for monorepos'
+        type: string
+        default: '.'
+      run-lint:
+        description: 'Run ESLint'
+        type: boolean
+        default: true
+      run-type-check:
+        description: 'Run TypeScript type checking'
+        type: boolean
+        default: true
+      run-tests:
+        description: 'Run Vitest tests'
+        type: boolean
+        default: true
+      run-e2e:
+        description: 'Run E2E tests (Playwright/Cypress)'
+        type: boolean
+        default: false
+      run-build:
+        description: 'Run Vite build'
+        type: boolean
+        default: true
+      upload-artifact:
+        description: 'Upload dist/ as artifact'
+        type: boolean
+        default: true
+      artifact-name:
+        description: 'Name for the build artifact'
+        type: string
+        default: 'dist'
+      artifact-retention-days:
+        description: 'Days to retain build artifact'
+        type: number
+        default: 7
+      lint-script:
+        description: 'Custom lint script name'
+        type: string
+        default: 'lint'
+      test-script:
+        description: 'Custom test script name'
+        type: string
+        default: 'test'
+      e2e-script:
+        description: 'Custom e2e script name'
+        type: string
+        default: 'test:e2e'
+      build-script:
+        description: 'Custom build script name'
+        type: string
+        default: 'build'
+      test-coverage:
+        description: 'Generate test coverage report'
+        type: boolean
+        default: false
+
+jobs:
+  # ====================
+  # LINT JOB
+  # ====================
+  lint:
+    name: 🔍 Lint
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-lint }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup pnpm
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.working-directory }}/**/package-lock.json
+
+      - name: 📥 Install dependencies (npm)
+        if: ${{ inputs.package-manager == 'npm' }}
+        run: npm ci
+
+      - name: 📥 Install dependencies (pnpm)
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: 📥 Install dependencies (yarn)
+        if: ${{ inputs.package-manager == 'yarn' }}
+        run: yarn install --frozen-lockfile
+
+      - name: 🔍 Check if lint script exists
+        id: check-lint
+        run: |
+          if npm pkg get scripts.${{ inputs.lint-script }} | grep -q "undefined"; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+          else
+            echo "exists=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔍 Run ESLint
+        if: ${{ steps.check-lint.outputs.exists == 'true' }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run ${{ inputs.lint-script }}
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm run ${{ inputs.lint-script }}
+          else
+            yarn ${{ inputs.lint-script }}
+          fi
+
+  # ====================
+  # TYPE CHECK JOB
+  # ====================
+  type-check:
+    name: 📘 Type Check
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-type-check }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup pnpm
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.working-directory }}/**/package-lock.json
+
+      - name: 📥 Install dependencies (npm)
+        if: ${{ inputs.package-manager == 'npm' }}
+        run: npm ci
+
+      - name: 📥 Install dependencies (pnpm)
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: 📥 Install dependencies (yarn)
+        if: ${{ inputs.package-manager == 'yarn' }}
+        run: yarn install --frozen-lockfile
+
+      - name: 📘 Check if TypeScript is configured
+        id: check-ts
+        run: |
+          if [ -f "tsconfig.json" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📘 Run TypeScript type check
+        if: ${{ steps.check-ts.outputs.exists == 'true' }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npx tsc --noEmit
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm exec tsc --noEmit
+          else
+            yarn tsc --noEmit
+          fi
+
+  # ====================
+  # TEST JOB
+  # ====================
+  test:
+    name: 🧪 Test
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-tests }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup pnpm
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.working-directory }}/**/package-lock.json
+
+      - name: 📥 Install dependencies (npm)
+        if: ${{ inputs.package-manager == 'npm' }}
+        run: npm ci
+
+      - name: 📥 Install dependencies (pnpm)
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: 📥 Install dependencies (yarn)
+        if: ${{ inputs.package-manager == 'yarn' }}
+        run: yarn install --frozen-lockfile
+
+      - name: 🧪 Check if test script exists
+        id: check-test
+        run: |
+          if npm pkg get scripts.${{ inputs.test-script }} | grep -q "undefined"; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+          else
+            echo "exists=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🧪 Run Vitest
+        if: ${{ steps.check-test.outputs.exists == 'true' }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run ${{ inputs.test-script }}${{ inputs.test-coverage && ' -- --coverage' || '' }}
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm run ${{ inputs.test-script }}${{ inputs.test-coverage && ' -- --coverage' || '' }}
+          else
+            yarn ${{ inputs.test-script }}${{ inputs.test-coverage && ' --coverage' || '' }}
+          fi
+
+      - name: 📊 Upload coverage report
+        if: ${{ steps.check-test.outputs.exists == 'true' && inputs.test-coverage }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ${{ inputs.working-directory }}/coverage/
+          retention-days: 7
+
+  # ====================
+  # E2E TEST JOB
+  # ====================
+  e2e:
+    name: 🎭 E2E Tests
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-e2e }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup pnpm
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.working-directory }}/**/package-lock.json
+
+      - name: 📥 Install dependencies (npm)
+        if: ${{ inputs.package-manager == 'npm' }}
+        run: npm ci
+
+      - name: 📥 Install dependencies (pnpm)
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: 📥 Install dependencies (yarn)
+        if: ${{ inputs.package-manager == 'yarn' }}
+        run: yarn install --frozen-lockfile
+
+      - name: 🎭 Install Playwright browsers
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npx playwright install --with-deps chromium
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm exec playwright install --with-deps chromium
+          else
+            yarn playwright install --with-deps chromium
+          fi
+
+      - name: 🎭 Check if e2e script exists
+        id: check-e2e
+        run: |
+          if npm pkg get scripts.${{ inputs.e2e-script }} | grep -q "undefined"; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+          else
+            echo "exists=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🎭 Run E2E tests
+        if: ${{ steps.check-e2e.outputs.exists == 'true' }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run ${{ inputs.e2e-script }}
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm run ${{ inputs.e2e-script }}
+          else
+            yarn ${{ inputs.e2e-script }}
+          fi
+
+      - name: 📁 Upload E2E test results
+        if: ${{ always() && steps.check-e2e.outputs.exists == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: |
+            ${{ inputs.working-directory }}/playwright-report/
+            ${{ inputs.working-directory }}/test-results/
+          retention-days: 7
+
+  # ====================
+  # BUILD JOB
+  # ====================
+  build:
+    name: 🏗️ Build
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-build }}
+    needs: [lint, type-check, test]
+    # Run even if optional jobs were skipped
+    if: |
+      always() &&
+      inputs.run-build &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.type-check.result == 'success' || needs.type-check.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup pnpm
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.working-directory }}/**/package-lock.json
+
+      - name: 📥 Install dependencies (npm)
+        if: ${{ inputs.package-manager == 'npm' }}
+        run: npm ci
+
+      - name: 📥 Install dependencies (pnpm)
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: 📥 Install dependencies (yarn)
+        if: ${{ inputs.package-manager == 'yarn' }}
+        run: yarn install --frozen-lockfile
+
+      - name: 🏗️ Build with Vite
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run ${{ inputs.build-script }}
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm run ${{ inputs.build-script }}
+          else
+            yarn ${{ inputs.build-script }}
+          fi
+
+      - name: 📁 Upload build artifact
+        if: ${{ inputs.upload-artifact }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.working-directory }}/dist/
+          retention-days: ${{ inputs.artifact-retention-days }}

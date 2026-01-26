@@ -167,6 +167,126 @@ jobs:
 
 ---
 
+### ⚡ Vite + React SPA CI (`ci-vite-react.yml`)
+
+Complete CI workflow for Vite + React SPA applications. Includes linting, type checking, testing with Vitest, E2E tests, and production builds.
+
+#### Basic Usage
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  ci:
+    uses: Capibara-Corp/shared-workflows/.github/workflows/ci-vite-react.yml@v1
+```
+
+#### Full Example with All Options
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: Capibara-Corp/shared-workflows/.github/workflows/ci-vite-react.yml@v1
+    with:
+      node-version: '20'              # Node.js version
+      package-manager: 'pnpm'         # npm, pnpm, or yarn
+      pnpm-version: '9'               # pnpm version (if using pnpm)
+      working-directory: '.'          # For monorepos
+      run-lint: true                  # Run ESLint
+      run-type-check: true            # Run tsc --noEmit
+      run-tests: true                 # Run Vitest tests
+      run-e2e: false                  # Run E2E tests (Playwright)
+      run-build: true                 # Build with Vite
+      upload-artifact: true           # Upload dist/ as artifact
+      artifact-name: 'dist'           # Name for the artifact
+      artifact-retention-days: 7      # Days to retain artifact
+      test-coverage: true             # Generate coverage report
+```
+
+#### Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `node-version` | Node.js version | `20` |
+| `package-manager` | Package manager (`npm`, `pnpm`, `yarn`) | `npm` |
+| `pnpm-version` | pnpm version (if using pnpm) | `9` |
+| `working-directory` | Working directory for commands | `.` |
+| `run-lint` | Run ESLint | `true` |
+| `run-type-check` | Run TypeScript type checking | `true` |
+| `run-tests` | Run Vitest tests | `true` |
+| `run-e2e` | Run E2E tests (Playwright/Cypress) | `false` |
+| `run-build` | Run Vite build | `true` |
+| `upload-artifact` | Upload dist/ as artifact | `true` |
+| `artifact-name` | Name for the build artifact | `dist` |
+| `artifact-retention-days` | Days to retain build artifact | `7` |
+| `lint-script` | Custom lint script name | `lint` |
+| `test-script` | Custom test script name | `test` |
+| `e2e-script` | Custom e2e script name | `test:e2e` |
+| `build-script` | Custom build script name | `build` |
+| `test-coverage` | Generate test coverage report | `false` |
+
+#### Jobs
+
+1. **Lint** - Run ESLint (skips if no lint script found)
+2. **Type Check** - Run `tsc --noEmit` (skips if no tsconfig.json)
+3. **Test** - Run Vitest tests (skips if no test script found)
+4. **E2E** - Run Playwright/Cypress E2E tests (optional)
+5. **Build** - Build production bundle with Vite
+
+#### Features
+
+- ✅ Multi-package manager support (npm, pnpm, yarn)
+- ✅ Automatic dependency caching
+- ✅ Smart script detection (skips if script doesn't exist)
+- ✅ TypeScript support with type checking
+- ✅ Vitest integration with coverage reports
+- ✅ E2E testing support (Playwright)
+- ✅ Production build with artifact upload
+- ✅ Monorepo support via `working-directory`
+- ✅ Configurable artifact retention
+
+#### Downloading Build Artifacts
+
+The `dist/` artifact can be used for deployment:
+
+```yaml
+jobs:
+  ci:
+    uses: Capibara-Corp/shared-workflows/.github/workflows/ci-vite-react.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: 'production-build'
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-build
+          path: dist/
+      
+      # Deploy dist/ to your hosting provider
+      - name: Deploy to hosting
+        run: # your deploy command here
+```
+
+---
+
 ## Contributing
 
 1. Fork the repository
