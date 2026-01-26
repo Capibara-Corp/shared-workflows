@@ -73,6 +73,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup environment file
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f ".env.example" ] && [ ! -f ".env" ]; then
+            cp .env.example .env
+            echo "Created .env from .env.example"
+          fi
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -101,6 +109,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup environment file
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f ".env.example" ] && [ ! -f ".env" ]; then
+            cp .env.example .env
+            echo "Created .env from .env.example"
+          fi
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -143,6 +159,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup environment file
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f ".env.example" ] && [ ! -f ".env" ]; then
+            cp .env.example .env
+            echo "Created .env from .env.example"
+          fi
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -175,6 +199,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup environment file
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f ".env.example" ] && [ ! -f ".env" ]; then
+            cp .env.example .env
+            echo "Created .env from .env.example"
+          fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -214,6 +246,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup environment file
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f ".env.example" ] && [ ! -f ".env" ]; then
+            cp .env.example .env
+            echo "Created .env from .env.example"
+          fi
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
