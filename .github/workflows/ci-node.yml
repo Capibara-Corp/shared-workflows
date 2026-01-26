@@ -1,0 +1,287 @@
+# Reusable CI workflow for Node.js backend projects (non-Next.js)
+# Usage: See README.md for examples
+
+name: CI Node.js
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+      package-manager:
+        description: 'Package manager (npm, pnpm, yarn)'
+        required: false
+        type: string
+        default: 'npm'
+      pnpm-version:
+        description: 'pnpm version (only used if package-manager is pnpm)'
+        required: false
+        type: string
+        default: '9'
+      run-lint:
+        description: 'Run ESLint'
+        required: false
+        type: boolean
+        default: true
+      run-tests:
+        description: 'Run tests'
+        required: false
+        type: boolean
+        default: true
+      run-build:
+        description: 'Run build script'
+        required: false
+        type: boolean
+        default: true
+      working-directory:
+        description: 'Working directory for monorepos'
+        required: false
+        type: string
+        default: '.'
+      test-coverage:
+        description: 'Generate test coverage report'
+        required: false
+        type: boolean
+        default: false
+      lint-script:
+        description: 'Custom lint script name'
+        required: false
+        type: string
+        default: 'lint'
+      test-script:
+        description: 'Custom test script name'
+        required: false
+        type: string
+        default: 'test'
+      build-script:
+        description: 'Custom build script name'
+        required: false
+        type: string
+        default: 'build'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-lint }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: |
+            ${{ inputs.working-directory }}/package-lock.json
+            ${{ inputs.working-directory }}/pnpm-lock.yaml
+            ${{ inputs.working-directory }}/yarn.lock
+
+      - name: Install dependencies (npm)
+        if: ${{ inputs.package-manager == 'npm' }}
+        run: npm ci
+
+      - name: Install dependencies (pnpm)
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Install dependencies (yarn)
+        if: ${{ inputs.package-manager == 'yarn' }}
+        run: yarn install --frozen-lockfile
+
+      - name: Check if lint script exists
+        id: check-lint
+        run: |
+          if node -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts['${{ inputs.lint-script }}'] ? 0 : 1)" 2>/dev/null; then
+            echo "has-lint=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-lint=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run ESLint (npm)
+        if: ${{ steps.check-lint.outputs.has-lint == 'true' && inputs.package-manager == 'npm' }}
+        run: npm run ${{ inputs.lint-script }}
+
+      - name: Run ESLint (pnpm)
+        if: ${{ steps.check-lint.outputs.has-lint == 'true' && inputs.package-manager == 'pnpm' }}
+        run: pnpm run ${{ inputs.lint-script }}
+
+      - name: Run ESLint (yarn)
+        if: ${{ steps.check-lint.outputs.has-lint == 'true' && inputs.package-manager == 'yarn' }}
+        run: yarn ${{ inputs.lint-script }}
+
+      - name: Skip lint (no script found)
+        if: ${{ steps.check-lint.outputs.has-lint == 'false' }}
+        run: echo "⚠️ No '${{ inputs.lint-script }}' script found in package.json, skipping lint"
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-tests }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: |
+            ${{ inputs.working-directory }}/package-lock.json
+            ${{ inputs.working-directory }}/pnpm-lock.yaml
+            ${{ inputs.working-directory }}/yarn.lock
+
+      - name: Install dependencies (npm)
+        if: ${{ inputs.package-manager == 'npm' }}
+        run: npm ci
+
+      - name: Install dependencies (pnpm)
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Install dependencies (yarn)
+        if: ${{ inputs.package-manager == 'yarn' }}
+        run: yarn install --frozen-lockfile
+
+      - name: Check if test script exists
+        id: check-tests
+        run: |
+          if node -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts['${{ inputs.test-script }}'] ? 0 : 1)" 2>/dev/null; then
+            echo "has-tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-tests=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run tests (npm)
+        if: ${{ steps.check-tests.outputs.has-tests == 'true' && inputs.package-manager == 'npm' }}
+        run: npm run ${{ inputs.test-script }}${{ inputs.test-coverage && ' -- --coverage' || '' }}
+        env:
+          CI: true
+
+      - name: Run tests (pnpm)
+        if: ${{ steps.check-tests.outputs.has-tests == 'true' && inputs.package-manager == 'pnpm' }}
+        run: pnpm run ${{ inputs.test-script }}${{ inputs.test-coverage && ' -- --coverage' || '' }}
+        env:
+          CI: true
+
+      - name: Run tests (yarn)
+        if: ${{ steps.check-tests.outputs.has-tests == 'true' && inputs.package-manager == 'yarn' }}
+        run: yarn ${{ inputs.test-script }}${{ inputs.test-coverage && ' --coverage' || '' }}
+        env:
+          CI: true
+
+      - name: Upload coverage report
+        if: ${{ inputs.test-coverage && steps.check-tests.outputs.has-tests == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            ${{ inputs.working-directory }}/coverage/
+          retention-days: 7
+
+      - name: Skip tests (no script found)
+        if: ${{ steps.check-tests.outputs.has-tests == 'false' }}
+        run: echo "⚠️ No '${{ inputs.test-script }}' script found in package.json, skipping tests"
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-build }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: |
+            ${{ inputs.working-directory }}/package-lock.json
+            ${{ inputs.working-directory }}/pnpm-lock.yaml
+            ${{ inputs.working-directory }}/yarn.lock
+
+      - name: Install dependencies (npm)
+        if: ${{ inputs.package-manager == 'npm' }}
+        run: npm ci
+
+      - name: Install dependencies (pnpm)
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Install dependencies (yarn)
+        if: ${{ inputs.package-manager == 'yarn' }}
+        run: yarn install --frozen-lockfile
+
+      - name: Check if build script exists
+        id: check-build
+        run: |
+          if node -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts['${{ inputs.build-script }}'] ? 0 : 1)" 2>/dev/null; then
+            echo "has-build=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run build (npm)
+        if: ${{ steps.check-build.outputs.has-build == 'true' && inputs.package-manager == 'npm' }}
+        run: npm run ${{ inputs.build-script }}
+
+      - name: Run build (pnpm)
+        if: ${{ steps.check-build.outputs.has-build == 'true' && inputs.package-manager == 'pnpm' }}
+        run: pnpm run ${{ inputs.build-script }}
+
+      - name: Run build (yarn)
+        if: ${{ steps.check-build.outputs.has-build == 'true' && inputs.package-manager == 'yarn' }}
+        run: yarn ${{ inputs.build-script }}
+
+      - name: Upload build artifacts
+        if: ${{ steps.check-build.outputs.has-build == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            ${{ inputs.working-directory }}/dist/
+            ${{ inputs.working-directory }}/build/
+            ${{ inputs.working-directory }}/out/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Skip build (no script found)
+        if: ${{ steps.check-build.outputs.has-build == 'false' }}
+        run: echo "⚠️ No '${{ inputs.build-script }}' script found in package.json, skipping build"
