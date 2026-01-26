@@ -14,10 +14,10 @@ on:
   workflow_call:
     inputs:
       flutter-version:
-        description: 'Flutter version to use (e.g., 3.24.0, stable, beta)'
+        description: 'Flutter version to use (e.g., 3.24.0). Leave empty to use latest from channel.'
         required: false
         type: string
-        default: 'stable'
+        default: ''
       flutter-channel:
         description: 'Flutter channel (stable, beta, dev, master)'
         required: false
