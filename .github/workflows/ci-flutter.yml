@@ -1,0 +1,240 @@
+# Reusable Flutter CI Workflow
+# Usage:
+#   jobs:
+#     ci:
+#       uses: Capibara-Corp/shared-workflows/.github/workflows/ci-flutter.yml@main
+#       with:
+#         flutter-version: '3.24.0'  # optional
+#         run-build-web: true
+#         run-build-apk: true
+
+name: Flutter CI
+
+on:
+  workflow_call:
+    inputs:
+      flutter-version:
+        description: 'Flutter version to use (e.g., 3.24.0, stable, beta)'
+        required: false
+        type: string
+        default: 'stable'
+      flutter-channel:
+        description: 'Flutter channel (stable, beta, dev, master)'
+        required: false
+        type: string
+        default: 'stable'
+      working-directory:
+        description: 'Working directory for Flutter commands'
+        required: false
+        type: string
+        default: '.'
+      run-analyze:
+        description: 'Run flutter analyze'
+        required: false
+        type: boolean
+        default: true
+      run-test:
+        description: 'Run flutter test'
+        required: false
+        type: boolean
+        default: true
+      run-build-web:
+        description: 'Build for web platform'
+        required: false
+        type: boolean
+        default: false
+      run-build-apk:
+        description: 'Build APK for Android'
+        required: false
+        type: boolean
+        default: false
+      run-build-ios:
+        description: 'Build for iOS (requires macOS runner)'
+        required: false
+        type: boolean
+        default: false
+      java-version:
+        description: 'Java version for Android builds'
+        required: false
+        type: string
+        default: '17'
+      test-coverage:
+        description: 'Generate test coverage report'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-analyze }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter-version }}
+          channel: ${{ inputs.flutter-channel }}
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
+
+      - name: Get dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter pub get
+
+      - name: Analyze code
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter analyze --fatal-infos
+
+      - name: Check formatting
+        working-directory: ${{ inputs.working-directory }}
+        run: dart format --set-exit-if-changed .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-test }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter-version }}
+          channel: ${{ inputs.flutter-channel }}
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
+
+      - name: Get dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter pub get
+
+      - name: Run tests
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.test-coverage }}" = "true" ]; then
+            flutter test --coverage
+          else
+            flutter test
+          fi
+
+      - name: Upload coverage report
+        if: ${{ inputs.test-coverage }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ${{ inputs.working-directory }}/coverage/lcov.info
+          retention-days: 7
+
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-build-web }}
+    needs: [analyze, test]
+    # Run even if analyze/test were skipped
+    # https://docs.github.com/en/actions/learn-github-actions/expressions#always
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter-version }}
+          channel: ${{ inputs.flutter-channel }}
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
+
+      - name: Get dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter pub get
+
+      - name: Build web
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter build web --release
+
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: ${{ inputs.working-directory }}/build/web
+          retention-days: 7
+
+  build-apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-build-apk }}
+    needs: [analyze, test]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ inputs.java-version }}
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter-version }}
+          channel: ${{ inputs.flutter-channel }}
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
+
+      - name: Get dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ inputs.working-directory }}/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
+
+  build-ios:
+    name: Build iOS
+    runs-on: macos-latest
+    if: ${{ inputs.run-build-ios }}
+    needs: [analyze, test]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter-version }}
+          channel: ${{ inputs.flutter-channel }}
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
+
+      - name: Get dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        working-directory: ${{ inputs.working-directory }}
+        run: flutter build ios --release --no-codesign
+
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build
+          path: ${{ inputs.working-directory }}/build/ios/iphoneos
+          retention-days: 7
