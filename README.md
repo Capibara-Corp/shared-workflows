@@ -4,95 +4,94 @@ Reusable GitHub Actions workflows for Capibara-Corp projects.
 
 ## Available Workflows
 
-### `ci-nextjs.yml` - Next.js CI Pipeline
+### 🐦 Flutter CI (`ci-flutter.yml`)
 
-A complete CI workflow for Next.js projects with lint, type-check, tests, and build.
+Complete CI/CD workflow for Flutter applications including analysis, testing, and multi-platform builds.
 
-## Usage
-
-Create a workflow file in your repo (e.g., `.github/workflows/ci.yml`):
+#### Basic Usage
 
 ```yaml
 name: CI
 
 on:
-  pull_request:
-    branches: [main, develop]
   push:
+    branches: [main, develop]
+  pull_request:
     branches: [main, develop]
 
 jobs:
   ci:
-    uses: Capibara-Corp/shared-workflows/.github/workflows/ci-nextjs.yml@v1
+    uses: Capibara-Corp/shared-workflows/.github/workflows/ci-flutter.yml@main
 ```
 
-### With Custom Options
+#### Full Example with All Options
 
 ```yaml
 name: CI
 
 on:
-  pull_request:
-    branches: [main, develop]
   push:
-    branches: [main, develop]
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   ci:
-    uses: Capibara-Corp/shared-workflows/.github/workflows/ci-nextjs.yml@v1
+    uses: Capibara-Corp/shared-workflows/.github/workflows/ci-flutter.yml@main
     with:
-      node-version: '22'
-      run-e2e: true
-      e2e-grep: '@smoke'
-      run-unit-tests: false
+      flutter-version: '3.24.0'      # Specific version or 'stable'
+      flutter-channel: 'stable'       # stable, beta, dev, master
+      working-directory: '.'          # For monorepos
+      run-analyze: true               # Run flutter analyze
+      run-test: true                  # Run flutter test
+      run-build-web: true             # Build web release
+      run-build-apk: true             # Build Android APK
+      run-build-ios: false            # Build iOS (requires macOS)
+      java-version: '17'              # Java version for Android
+      test-coverage: true             # Generate coverage report
 ```
 
-### For Monorepos
-
-```yaml
-jobs:
-  ci:
-    uses: Capibara-Corp/shared-workflows/.github/workflows/ci-nextjs.yml@v1
-    with:
-      working-directory: 'apps/web'
-```
-
-## Inputs
+#### Inputs
 
 | Input | Description | Default |
 |-------|-------------|---------|
-| `node-version` | Node.js version | `20` |
-| `run-lint` | Run ESLint | `true` |
-| `run-type-check` | Run TypeScript type check | `true` |
-| `run-unit-tests` | Run Jest unit tests | `true` |
-| `run-e2e` | Run Playwright E2E tests | `false` |
-| `e2e-grep` | Playwright grep filter | `''` |
-| `run-build` | Run Next.js build | `true` |
-| `working-directory` | Working directory for monorepos | `.` |
+| `flutter-version` | Flutter version (e.g., `3.24.0`, `stable`) | `stable` |
+| `flutter-channel` | Release channel (`stable`, `beta`, `dev`, `master`) | `stable` |
+| `working-directory` | Working directory for commands | `.` |
+| `run-analyze` | Run `flutter analyze` | `true` |
+| `run-test` | Run `flutter test` | `true` |
+| `run-build-web` | Build for web | `false` |
+| `run-build-apk` | Build APK for Android | `false` |
+| `run-build-ios` | Build for iOS (macOS runner) | `false` |
+| `java-version` | Java version for Android builds | `17` |
+| `test-coverage` | Generate coverage report | `false` |
 
-## Jobs
+#### Jobs
 
-The workflow runs these jobs (when enabled):
+1. **Analyze** - Code analysis and formatting check
+2. **Test** - Run unit and widget tests
+3. **Build Web** - Create web release build (optional)
+4. **Build APK** - Create Android release APK (optional)
+5. **Build iOS** - Create iOS build without codesign (optional)
 
-1. **Lint** - ESLint checks
-2. **Type Check** - TypeScript `tsc --noEmit`
-3. **Unit Tests** - Jest (skips if no test script exists)
-4. **E2E Tests** - Playwright (optional, includes browser caching)
-5. **Build** - Next.js production build with `.next/cache` caching
+#### Features
 
-## Versioning
+- ✅ Flutter SDK caching for faster builds
+- ✅ Pub dependencies caching
+- ✅ Artifact uploads for builds
+- ✅ Coverage report generation
+- ✅ Monorepo support via `working-directory`
+- ✅ Configurable Flutter version and channel
 
-- `@v1` - Floating tag (recommended) - always points to latest v1.x.x
-- `@v1.0.0` - Specific version (for pinning)
+---
 
-## Setup for Organization Access
+## Contributing
 
-> ⚠️ **Required:** For this workflow to be accessible from other repos in the organization, an admin must enable it:
->
-> 1. Go to **Settings → Actions → General** in this repo
-> 2. Under "Access", select **"Accessible from repositories in the 'Capibara-Corp' organization"**
-> 3. Save
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
 ## License
 
-Internal use only - Capibara-Corp
+MIT License - see [LICENSE](LICENSE) for details.
