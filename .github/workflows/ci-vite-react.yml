@@ -350,9 +350,8 @@ jobs:
   build:
     name: 🏗️ Build
     runs-on: ubuntu-latest
-    if: ${{ inputs.run-build }}
     needs: [lint, type-check, test]
-    # Run even if optional jobs were skipped
+    # Run if build is enabled and dependencies succeeded or were skipped
     if: |
       always() &&
       inputs.run-build &&
