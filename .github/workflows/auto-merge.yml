@@ -7,7 +7,7 @@ on:
         description: 'Maximum time to wait for checks (in minutes)'
         required: false
         type: number
-        default: 15
+        default: 10
       poll-interval:
         description: 'Seconds between status checks'
         required: false
@@ -27,30 +27,41 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
           POLL_INTERVAL: ${{ inputs.poll-interval }}
         run: |
-          echo "Waiting for CI checks on PR #$PR_NUMBER..."
+          echo "Waiting for CI checks on PR #$PR_NUMBER (SHA: $HEAD_SHA)..."
 
           TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
           ELAPSED=0
 
+          # Initial wait for checks to be registered
+          echo "Waiting 15s for checks to register..."
+          sleep 15
+          ELAPSED=15
+
           while [ $ELAPSED -lt $TIMEOUT_SECONDS ]; do
             echo "Checking status... (${ELAPSED}s elapsed)"
 
-            # Get all check runs for this PR using correct fields
-            CHECKS_JSON=$(gh pr checks $PR_NUMBER --json name,bucket,workflow 2>/dev/null || echo "[]")
+            # Get check runs directly from API using commit SHA
+            CHECK_RUNS=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs" --jq '.check_runs')
 
-            # Filter out auto-merge workflow itself
-            CI_CHECKS=$(echo "$CHECKS_JSON" | jq '[.[] | select(.workflow != "Auto Merge")]')
+            # Filter out auto-merge workflow
+            CI_RUNS=$(echo "$CHECK_RUNS" | jq '[.[] | select(.name | contains("auto-merge") | not)]')
 
-            # Count checks by bucket
-            TOTAL=$(echo "$CI_CHECKS" | jq 'length')
-            PENDING=$(echo "$CI_CHECKS" | jq '[.[] | select(.bucket == "pending")] | length')
-            FAILED=$(echo "$CI_CHECKS" | jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length')
-            PASSED=$(echo "$CI_CHECKS" | jq '[.[] | select(.bucket == "pass" or .bucket == "skipping")] | length')
+            # Count by status
+            TOTAL=$(echo "$CI_RUNS" | jq 'length')
+            IN_PROGRESS=$(echo "$CI_RUNS" | jq '[.[] | select(.status == "in_progress" or .status == "queued")] | length')
+            FAILED=$(echo "$CI_RUNS" | jq '[.[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")] | length')
+            PASSED=$(echo "$CI_RUNS" | jq '[.[] | select(.conclusion == "success" or .conclusion == "skipped" or .conclusion == "neutral")] | length')
 
-            echo "Status: $PASSED passed, $PENDING pending, $FAILED failed (total: $TOTAL)"
+            echo "Status: $PASSED passed, $IN_PROGRESS in progress, $FAILED failed (total: $TOTAL)"
+
+            # Debug: show check names
+            echo "Checks found:"
+            echo "$CI_RUNS" | jq -r '.[] | "  - \(.name): \(.status) / \(.conclusion)"'
 
             # If no CI checks exist yet, wait
             if [ "$TOTAL" -eq 0 ]; then
@@ -63,12 +74,12 @@ jobs:
             # If any check failed, abort
             if [ "$FAILED" -gt 0 ]; then
               echo "Some checks failed. Aborting auto-merge."
-              echo "$CI_CHECKS" | jq -r '.[] | select(.bucket == "fail" or .bucket == "cancel") | "  - \(.name): \(.bucket)"'
+              echo "$CI_RUNS" | jq -r '.[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "  FAILED: \(.name)"'
               exit 1
             fi
 
-            # If no pending checks, all done
-            if [ "$PENDING" -eq 0 ]; then
+            # If no in-progress checks, all done
+            if [ "$IN_PROGRESS" -eq 0 ]; then
               echo "All CI checks passed!"
               break
             fi
@@ -79,8 +90,8 @@ jobs:
           done
 
           if [ $ELAPSED -ge $TIMEOUT_SECONDS ]; then
-            echo "Timeout reached. Some checks are still pending."
-            echo "$CI_CHECKS" | jq -r '.[] | select(.bucket == "pending") | "  - \(.name)"'
+            echo "Timeout reached. Some checks are still in progress."
+            echo "$CI_RUNS" | jq -r '.[] | select(.status == "in_progress" or .status == "queued") | "  PENDING: \(.name)"'
             exit 1
           fi
 
