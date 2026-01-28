@@ -13,11 +13,6 @@ on:
         required: false
         type: number
         default: 30
-      required-checks:
-        description: 'Comma-separated list of required check names (empty = wait for all)'
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: write
@@ -34,41 +29,47 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
           POLL_INTERVAL: ${{ inputs.poll-interval }}
-          REQUIRED_CHECKS: ${{ inputs.required-checks }}
         run: |
-          echo "🔍 Waiting for CI checks on PR #$PR_NUMBER..."
+          echo "Waiting for CI checks on PR #$PR_NUMBER..."
 
           TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
           ELAPSED=0
 
           while [ $ELAPSED -lt $TIMEOUT_SECONDS ]; do
-            echo "⏳ Checking status... (${ELAPSED}s elapsed)"
+            echo "Checking status... (${ELAPSED}s elapsed)"
 
-            # Get all check runs for this PR
-            CHECKS_JSON=$(gh pr checks $PR_NUMBER --json name,state,conclusion 2>/dev/null || echo "[]")
+            # Get all check runs for this PR using correct fields
+            CHECKS_JSON=$(gh pr checks $PR_NUMBER --json name,bucket,workflow 2>/dev/null || echo "[]")
 
-            # Count checks by state
-            TOTAL=$(echo "$CHECKS_JSON" | jq 'length')
-            PENDING=$(echo "$CHECKS_JSON" | jq '[.[] | select(.state == "PENDING" or .state == "IN_PROGRESS" or .state == "QUEUED")] | length')
-            FAILED=$(echo "$CHECKS_JSON" | jq '[.[] | select(.conclusion == "FAILURE" or .conclusion == "CANCELLED" or .conclusion == "TIMED_OUT")] | length')
-            PASSED=$(echo "$CHECKS_JSON" | jq '[.[] | select(.conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL")] | length')
+            # Filter out auto-merge workflow itself
+            CI_CHECKS=$(echo "$CHECKS_JSON" | jq '[.[] | select(.workflow != "Auto Merge")]')
 
-            echo "📊 Status: $PASSED passed, $PENDING pending, $FAILED failed (total: $TOTAL)"
+            # Count checks by bucket
+            TOTAL=$(echo "$CI_CHECKS" | jq 'length')
+            PENDING=$(echo "$CI_CHECKS" | jq '[.[] | select(.bucket == "pending")] | length')
+            FAILED=$(echo "$CI_CHECKS" | jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length')
+            PASSED=$(echo "$CI_CHECKS" | jq '[.[] | select(.bucket == "pass" or .bucket == "skipping")] | length')
 
-            # Exclude self (auto-merge) from counts
-            SELF_CHECK=$(echo "$CHECKS_JSON" | jq '[.[] | select(.name | contains("auto-merge"))] | length')
-            PENDING=$((PENDING - SELF_CHECK > 0 ? PENDING - SELF_CHECK : PENDING))
+            echo "Status: $PASSED passed, $PENDING pending, $FAILED failed (total: $TOTAL)"
+
+            # If no CI checks exist yet, wait
+            if [ "$TOTAL" -eq 0 ]; then
+              echo "No CI checks found yet, waiting..."
+              sleep $POLL_INTERVAL
+              ELAPSED=$((ELAPSED + POLL_INTERVAL))
+              continue
+            fi
 
             # If any check failed, abort
             if [ "$FAILED" -gt 0 ]; then
-              echo "❌ Some checks failed. Aborting auto-merge."
-              echo "$CHECKS_JSON" | jq '.[] | select(.conclusion == "FAILURE" or .conclusion == "CANCELLED") | "\(.name): \(.conclusion)"'
+              echo "Some checks failed. Aborting auto-merge."
+              echo "$CI_CHECKS" | jq -r '.[] | select(.bucket == "fail" or .bucket == "cancel") | "  - \(.name): \(.bucket)"'
               exit 1
             fi
 
-            # If no pending checks (excluding self), we're done
-            if [ "$PENDING" -eq 0 ] && [ "$TOTAL" -gt 1 ]; then
-              echo "✅ All checks passed!"
+            # If no pending checks, all done
+            if [ "$PENDING" -eq 0 ]; then
+              echo "All CI checks passed!"
               break
             fi
 
@@ -78,7 +79,8 @@ jobs:
           done
 
           if [ $ELAPSED -ge $TIMEOUT_SECONDS ]; then
-            echo "⏰ Timeout reached. Some checks are still pending."
+            echo "Timeout reached. Some checks are still pending."
+            echo "$CI_CHECKS" | jq -r '.[] | select(.bucket == "pending") | "  - \(.name)"'
             exit 1
           fi
 
@@ -87,6 +89,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "🔀 Merging PR #$PR_NUMBER..."
+          echo "Merging PR #$PR_NUMBER..."
           gh pr merge $PR_NUMBER --squash --delete-branch
-          echo "✅ PR merged successfully!"
+          echo "PR merged successfully!"
