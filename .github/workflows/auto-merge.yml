@@ -2,20 +2,91 @@ name: Auto Merge
 
 on:
   workflow_call:
+    inputs:
+      timeout-minutes:
+        description: 'Maximum time to wait for checks (in minutes)'
+        required: false
+        type: number
+        default: 15
+      poll-interval:
+        description: 'Seconds between status checks'
+        required: false
+        type: number
+        default: 30
+      required-checks:
+        description: 'Comma-separated list of required check names (empty = wait for all)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
   pull-requests: write
+  checks: read
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Enable auto-merge
+      - name: Wait for CI checks to complete
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+          POLL_INTERVAL: ${{ inputs.poll-interval }}
+          REQUIRED_CHECKS: ${{ inputs.required-checks }}
         run: |
-          gh pr merge ${{ github.event.pull_request.number }} --squash --auto --delete-branch
+          echo "🔍 Waiting for CI checks on PR #$PR_NUMBER..."
+
+          TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT_SECONDS ]; do
+            echo "⏳ Checking status... (${ELAPSED}s elapsed)"
+
+            # Get all check runs for this PR
+            CHECKS_JSON=$(gh pr checks $PR_NUMBER --json name,state,conclusion 2>/dev/null || echo "[]")
+
+            # Count checks by state
+            TOTAL=$(echo "$CHECKS_JSON" | jq 'length')
+            PENDING=$(echo "$CHECKS_JSON" | jq '[.[] | select(.state == "PENDING" or .state == "IN_PROGRESS" or .state == "QUEUED")] | length')
+            FAILED=$(echo "$CHECKS_JSON" | jq '[.[] | select(.conclusion == "FAILURE" or .conclusion == "CANCELLED" or .conclusion == "TIMED_OUT")] | length')
+            PASSED=$(echo "$CHECKS_JSON" | jq '[.[] | select(.conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL")] | length')
+
+            echo "📊 Status: $PASSED passed, $PENDING pending, $FAILED failed (total: $TOTAL)"
+
+            # Exclude self (auto-merge) from counts
+            SELF_CHECK=$(echo "$CHECKS_JSON" | jq '[.[] | select(.name | contains("auto-merge"))] | length')
+            PENDING=$((PENDING - SELF_CHECK > 0 ? PENDING - SELF_CHECK : PENDING))
+
+            # If any check failed, abort
+            if [ "$FAILED" -gt 0 ]; then
+              echo "❌ Some checks failed. Aborting auto-merge."
+              echo "$CHECKS_JSON" | jq '.[] | select(.conclusion == "FAILURE" or .conclusion == "CANCELLED") | "\(.name): \(.conclusion)"'
+              exit 1
+            fi
+
+            # If no pending checks (excluding self), we're done
+            if [ "$PENDING" -eq 0 ] && [ "$TOTAL" -gt 1 ]; then
+              echo "✅ All checks passed!"
+              break
+            fi
+
+            # Wait before next check
+            sleep $POLL_INTERVAL
+            ELAPSED=$((ELAPSED + POLL_INTERVAL))
+          done
+
+          if [ $ELAPSED -ge $TIMEOUT_SECONDS ]; then
+            echo "⏰ Timeout reached. Some checks are still pending."
+            exit 1
+          fi
+
+      - name: Merge PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "🔀 Merging PR #$PR_NUMBER..."
+          gh pr merge $PR_NUMBER --squash --delete-branch
+          echo "✅ PR merged successfully!"
