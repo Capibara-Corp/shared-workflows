@@ -13,6 +13,21 @@ on:
         required: false
         type: number
         default: 30
+      main-merge-method:
+        description: 'Merge method for PRs targeting main/master branch (merge, squash, rebase)'
+        required: false
+        type: string
+        default: 'merge'
+      develop-merge-method:
+        description: 'Merge method for PRs targeting develop/development branch (merge, squash, rebase)'
+        required: false
+        type: string
+        default: 'squash'
+      default-merge-method:
+        description: 'Merge method for PRs targeting other branches (merge, squash, rebase)'
+        required: false
+        type: string
+        default: 'squash'
 
 permissions:
   contents: write
@@ -83,7 +98,7 @@ jobs:
 
             # If no in-progress checks, all done
             if [ "$IN_PROGRESS" -eq 0 ]; then
-              echo "All CI checks passed\!"
+              echo "All CI checks passed!"
               break
             fi
 
@@ -102,7 +117,28 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          MAIN_MERGE_METHOD: ${{ inputs.main-merge-method }}
+          DEVELOP_MERGE_METHOD: ${{ inputs.develop-merge-method }}
+          DEFAULT_MERGE_METHOD: ${{ inputs.default-merge-method }}
         run: |
-          echo "Merging PR #$PR_NUMBER..."
-          gh pr merge $PR_NUMBER --squash --delete-branch
-          echo "PR merged successfully\!"
+          echo "Merging PR #$PR_NUMBER (base branch: $BASE_BRANCH)..."
+
+          # Determine merge method based on base branch
+          case "$BASE_BRANCH" in
+            main|master)
+              MERGE_METHOD="$MAIN_MERGE_METHOD"
+              echo "Using main branch merge method: $MERGE_METHOD"
+              ;;
+            develop|development)
+              MERGE_METHOD="$DEVELOP_MERGE_METHOD"
+              echo "Using develop branch merge method: $MERGE_METHOD"
+              ;;
+            *)
+              MERGE_METHOD="$DEFAULT_MERGE_METHOD"
+              echo "Using default merge method: $MERGE_METHOD"
+              ;;
+          esac
+
+          gh pr merge $PR_NUMBER --$MERGE_METHOD --delete-branch
+          echo "PR merged successfully!"
