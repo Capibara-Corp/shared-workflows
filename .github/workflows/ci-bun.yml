@@ -1,0 +1,235 @@
+# Reusable CI workflow for Bun projects
+# Usage: See README.md for examples
+
+name: CI Bun
+
+on:
+  workflow_call:
+    inputs:
+      bun-version:
+        description: 'Bun version to use'
+        required: false
+        type: string
+        default: 'latest'
+      run-lint:
+        description: 'Run linter'
+        required: false
+        type: boolean
+        default: true
+      run-tests:
+        description: 'Run tests'
+        required: false
+        type: boolean
+        default: true
+      run-build:
+        description: 'Run build script'
+        required: false
+        type: boolean
+        default: true
+      run-type-check:
+        description: 'Run TypeScript type checking'
+        required: false
+        type: boolean
+        default: true
+      working-directory:
+        description: 'Working directory for monorepos'
+        required: false
+        type: string
+        default: '.'
+      test-coverage:
+        description: 'Generate test coverage report'
+        required: false
+        type: boolean
+        default: false
+      lint-script:
+        description: 'Custom lint script name'
+        required: false
+        type: string
+        default: 'lint'
+      test-script:
+        description: 'Custom test script name'
+        required: false
+        type: string
+        default: 'test'
+      build-script:
+        description: 'Custom build script name'
+        required: false
+        type: string
+        default: 'build'
+      type-check-script:
+        description: 'Custom type-check script name'
+        required: false
+        type: string
+        default: 'type-check'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-lint }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check if lint script exists
+        id: check-lint
+        run: |
+          if bun -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts['${{ inputs.lint-script }}'] ? 0 : 1)" 2>/dev/null; then
+            echo "has-lint=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-lint=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run linter
+        if: ${{ steps.check-lint.outputs.has-lint == 'true' }}
+        run: bun run ${{ inputs.lint-script }}
+
+      - name: Skip lint (no script found)
+        if: ${{ steps.check-lint.outputs.has-lint == 'false' }}
+        run: echo "Warning: No '${{ inputs.lint-script }}' script found in package.json, skipping lint"
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-type-check }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check if type-check script exists
+        id: check-type-check
+        run: |
+          if bun -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts['${{ inputs.type-check-script }}'] ? 0 : 1)" 2>/dev/null; then
+            echo "has-type-check=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-type-check=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run type check
+        if: ${{ steps.check-type-check.outputs.has-type-check == 'true' }}
+        run: bun run ${{ inputs.type-check-script }}
+
+      - name: Skip type check (no script found)
+        if: ${{ steps.check-type-check.outputs.has-type-check == 'false' }}
+        run: echo "Warning: No '${{ inputs.type-check-script }}' script found in package.json, skipping type check"
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-tests }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check if test script exists
+        id: check-tests
+        run: |
+          if bun -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts['${{ inputs.test-script }}'] ? 0 : 1)" 2>/dev/null; then
+            echo "has-tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-tests=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run tests
+        if: ${{ steps.check-tests.outputs.has-tests == 'true' }}
+        run: bun run ${{ inputs.test-script }}${{ inputs.test-coverage && ' --coverage' || '' }}
+        env:
+          CI: true
+
+      - name: Upload coverage report
+        if: ${{ inputs.test-coverage && steps.check-tests.outputs.has-tests == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            ${{ inputs.working-directory }}/coverage/
+          retention-days: 7
+
+      - name: Skip tests (no script found)
+        if: ${{ steps.check-tests.outputs.has-tests == 'false' }}
+        run: echo "Warning: No '${{ inputs.test-script }}' script found in package.json, skipping tests"
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-build }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check if build script exists
+        id: check-build
+        run: |
+          if bun -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts['${{ inputs.build-script }}'] ? 0 : 1)" 2>/dev/null; then
+            echo "has-build=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run build
+        if: ${{ steps.check-build.outputs.has-build == 'true' }}
+        run: bun run ${{ inputs.build-script }}
+
+      - name: Upload build artifacts
+        if: ${{ steps.check-build.outputs.has-build == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            ${{ inputs.working-directory }}/dist/
+            ${{ inputs.working-directory }}/build/
+            ${{ inputs.working-directory }}/out/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Skip build (no script found)
+        if: ${{ steps.check-build.outputs.has-build == 'false' }}
+        run: echo "Warning: No '${{ inputs.build-script }}' script found in package.json, skipping build"
