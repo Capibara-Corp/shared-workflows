@@ -129,7 +129,8 @@ jobs:
 
       - name: Skip lint (no script found)
         if: ${{ steps.check-lint.outputs.has-lint == 'false' }}
-        run: echo "⚠️ No '${{ inputs.lint-script }}' script found in package.json, skipping lint"
+        run: |
+          echo "⚠️ No '${{ inputs.lint-script }}' script found in package.json, skipping lint"
 
   test:
     name: Tests
@@ -208,7 +209,8 @@ jobs:
 
       - name: Skip tests (no script found)
         if: ${{ steps.check-tests.outputs.has-tests == 'false' }}
-        run: echo "⚠️ No '${{ inputs.test-script }}' script found in package.json, skipping tests"
+        run: |
+          echo "⚠️ No '${{ inputs.test-script }}' script found in package.json, skipping tests"
 
   build:
     name: Build
@@ -284,4 +286,5 @@ jobs:
 
       - name: Skip build (no script found)
         if: ${{ steps.check-build.outputs.has-build == 'false' }}
-        run: echo "⚠️ No '${{ inputs.build-script }}' script found in package.json, skipping build"
+        run: |
+          echo "⚠️ No '${{ inputs.build-script }}' script found in package.json, skipping build"

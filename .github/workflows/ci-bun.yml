@@ -101,7 +101,8 @@ jobs:
 
       - name: Skip lint (no script found)
         if: ${{ steps.check-lint.outputs.has-lint == 'false' }}
-        run: echo "Warning: No '${{ inputs.lint-script }}' script found in package.json, skipping lint"
+        run: |
+          echo "Warning: No '${{ inputs.lint-script }}' script found in package.json, skipping lint"
 
   type-check:
     name: Type Check
@@ -137,7 +138,8 @@ jobs:
 
       - name: Skip type check (no script found)
         if: ${{ steps.check-type-check.outputs.has-type-check == 'false' }}
-        run: echo "Warning: No '${{ inputs.type-check-script }}' script found in package.json, skipping type check"
+        run: |
+          echo "Warning: No '${{ inputs.type-check-script }}' script found in package.json, skipping type check"
 
   test:
     name: Tests
@@ -184,7 +186,8 @@ jobs:
 
       - name: Skip tests (no script found)
         if: ${{ steps.check-tests.outputs.has-tests == 'false' }}
-        run: echo "Warning: No '${{ inputs.test-script }}' script found in package.json, skipping tests"
+        run: |
+          echo "Warning: No '${{ inputs.test-script }}' script found in package.json, skipping tests"
 
   build:
     name: Build
@@ -232,4 +235,5 @@ jobs:
 
       - name: Skip build (no script found)
         if: ${{ steps.check-build.outputs.has-build == 'false' }}
-        run: echo "Warning: No '${{ inputs.build-script }}' script found in package.json, skipping build"
+        run: |
+          echo "Warning: No '${{ inputs.build-script }}' script found in package.json, skipping build"
