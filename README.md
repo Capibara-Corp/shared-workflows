@@ -297,3 +297,5 @@ jobs:
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+<\!-- Last verified: 2026-02-16 -->
