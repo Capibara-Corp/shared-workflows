@@ -223,6 +223,10 @@ jobs:
 
       - name: Build Next.js app
         run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_DEFAULT_LOCALE: ${{ vars.NEXT_PUBLIC_DEFAULT_LOCALE }}
 
       - name: Verify build output
         run: |
