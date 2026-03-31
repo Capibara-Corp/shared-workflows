@@ -55,6 +55,9 @@ jobs:
           TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
           ELAPSED=0
 
+          # Grace period to wait for checks to register before assuming CI was skipped
+          GRACE_PERIOD=60
+
           # Initial wait for checks to be registered
           echo "Waiting 15s for checks to register..."
           sleep 15
@@ -81,9 +84,13 @@ jobs:
             echo "Checks found:"
             echo "$CI_RUNS" | jq -r '.[] | "  - \(.name): \(.status) / \(.conclusion)"'
 
-            # If no CI checks exist yet, wait
+            # If no CI checks exist yet, check grace period
             if [ "$TOTAL" -eq 0 ]; then
-              echo "No CI checks found yet, waiting..."
+              if [ $ELAPSED -ge $GRACE_PERIOD ]; then
+                echo "No CI checks found after ${GRACE_PERIOD}s grace period. CI was likely skipped (e.g. paths-ignore). Proceeding to merge."
+                break
+              fi
+              echo "No CI checks found yet, waiting... (grace period: ${ELAPSED}s/${GRACE_PERIOD}s)"
               sleep $POLL_INTERVAL
               ELAPSED=$((ELAPSED + POLL_INTERVAL))
               continue
