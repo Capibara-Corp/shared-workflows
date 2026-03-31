@@ -56,7 +56,8 @@ jobs:
           ELAPSED=0
 
           # Grace period to wait for checks to register before assuming CI was skipped
-          GRACE_PERIOD=60
+          # Kept under 60s to avoid consuming a second billing minute
+          GRACE_PERIOD=50
 
           # Initial wait for checks to be registered
           echo "Waiting 15s for checks to register..."
